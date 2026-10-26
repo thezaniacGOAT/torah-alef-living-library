@@ -1,0 +1,50 @@
+{
+  "KRA": {
+    "name": "Chaim Kramer",
+    "aliases": [
+      "Chaim Kramer"
+    ]
+  },
+  "REB": {
+    "name": "David Reboh",
+    "aliases": [
+      "David Reboh"
+    ]
+  },
+  "EAD": {
+    "name": "Moshe Chaim Eade",
+    "aliases": [
+      "Moshe Chaim Eade"
+    ]
+  },
+  "GIN": {
+    "name": "Yirmi Ginsberg",
+    "aliases": [
+      "Yirmi Ginsberg"
+    ]
+  },
+  "GIS": {
+    "name": "Avraham Gislason",
+    "aliases": [
+      "Avraham Gislason"
+    ]
+  },
+  "KAR": {
+    "name": "Shlomo Karmely",
+    "aliases": [
+      "Shlomo Karmely"
+    ]
+  },
+  "JAF": {
+    "name": "Gedaliah Jaffe",
+    "aliases": [
+      "Gedaliah Jaffe"
+    ]
+  },
+  "RIE": {
+    "name": "Jonathan Rietti",
+    "aliases": [
+      "Jonathan Rietti"
+    ]
+  }
+}
