@@ -1,0 +1,5 @@
+dropbox>=12,<13
+requests>=2.32,<3
+python-docx>=1.1,<2
+openai>=1.40,<3
+youtube-transcript-api>=1.2,<2
