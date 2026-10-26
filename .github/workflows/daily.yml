@@ -1,0 +1,68 @@
+name: Torah Aleph Daily Archive
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '13 19 * * *'
+      timezone: 'America/Toronto'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: torah-alef-daily-archive
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install requirements
+        run: pip install -r automation/requirements.txt
+      - name: Compile and test
+        run: |
+          python -m compileall -q automation
+          cd automation && python -m unittest -v test_pipeline.py
+
+  archive:
+    needs: validate
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install requirements
+        run: pip install -r automation/requirements.txt
+      - name: Check configuration
+        id: configured
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+        run: |
+          if [ -n "$DROPBOX_APP_KEY" ] && [ -n "$DROPBOX_APP_SECRET" ] && [ -n "$DROPBOX_REFRESH_TOKEN" ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo 'Dropbox OAuth secrets are missing. No files will be written.'
+          fi
+      - name: Update speaker archive and index
+        if: steps.configured.outputs.ready == 'true'
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          DROPBOX_ROOT: '/05. TORAH/Torah Aleph/Shiur Library'
+        run: python automation/pipeline.py
