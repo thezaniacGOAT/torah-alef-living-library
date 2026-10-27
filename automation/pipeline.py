@@ -350,6 +350,12 @@ def process_videos(dbx, catalog, log):
                 entry["transcript_status"] = "extraction_or_archive_failed"
                 log.append("EXTRACTION FAILED " + ident + ": " + str(ex)[:240])
                 continue
+        # User-initiated, source-aware commentary takes priority over unattended AI notes.
+        manual_path = folder + "/Summaries/" + ident + " - Analytical Commentary v1.md"
+        if read_bytes(dbx, manual_path):
+            entry["summary_status"] = "manual_analytical_draft_needs_audio_review"
+            entry["editorial_summary_path"] = manual_path
+            continue
         summary_path = folder + "/Summaries/" + ident + " - Summary.md"
         if read_bytes(dbx, summary_path):
             entry["summary_status"] = "draft_from_auto_captions"
@@ -402,8 +408,12 @@ def build_indexes(dbx, catalog):
         for e in rows:
             if not e.get("shiur_id"):
                 continue
+            # Prefer richer manual commentary when available; preserve pending otherwise.
             note = read_bytes(dbx, speaker_path(sid) + "/Summaries/" +
-                              e["shiur_id"] + " - Summary.md")
+                              e["shiur_id"] + " - Analytical Commentary v1.md")
+            if not note:
+                note = read_bytes(dbx, speaker_path(sid) + "/Summaries/" +
+                                  e["shiur_id"] + " - Summary.md")
             cumulative.append((e["shiur_id"] + " — " + e["title"],
                 (note.decode("utf-8") if note else
                  "Pending transcript-backed summary.") +
