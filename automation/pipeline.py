@@ -12,6 +12,7 @@ import json
 import os
 import re
 import unicodedata
+from html import unescape
 from collections import defaultdict
 from pathlib import Path
 
@@ -96,11 +97,53 @@ def load_catalog(dbx):
     return result
 
 
+def normalized_words(value):
+    """Normalize punctuation and HTML entities without loosening name boundaries."""
+    value = unicodedata.normalize("NFKC", unescape(value or "")).casefold()
+    return " ".join(re.sub(r"[^\w]+", " ", value).split())
+
+
 def speaker_match(title, description):
-    text = unicodedata.normalize("NFKD", title + " " + description).lower()
-    hits = [sid for sid, spec in SPEAKERS.items()
-            if any(alias.lower() in text for alias in spec["aliases"])]
-    return hits[0] if len(hits) == 1 else "UNASSIGNED"
+    """Title attribution first; description requires explicit speaker wording."""
+    title_words = normalized_words(title)
+    title_hits = {sid for sid, spec in SPEAKERS.items()
+                  if any(re.search(r"(?:^| )" + re.escape(normalized_words(alias)) +
+                                   r"(?: |$)", title_words)
+                         for alias in spec["aliases"])}
+    if len(title_hits) == 1:
+        return next(iter(title_hits))
+    if title_hits:
+        return "UNASSIGNED"  # Multiple speakers in title; human review.
+
+    description_words = normalized_words(description)
+    cues = r"(?:speaker|lecturer|taught by|shiur by|given by|presented by|with)"
+    desc_hits = {sid for sid, spec in SPEAKERS.items()
+                 if any(re.search(r"\b" + cues + r"\s+(?:rabbi\s+|rav\s+|reb\s+|r\s+)?" +
+                                  re.escape(normalized_words(alias)) + r"\b",
+                                  description_words)
+                        for alias in spec["aliases"])}
+    return next(iter(desc_hits)) if len(desc_hits) == 1 else "UNASSIGNED"
+
+
+def reconcile_speakers(catalog, log):
+    """Promote safely identified older leads, preserving established shiur IDs."""
+    for entry in catalog:
+        if "&#" in entry.get("title", "") or "&amp;" in entry.get("title", ""):
+            entry["title"] = unescape(entry["title"])
+        if entry.get("speaker_id") != "UNASSIGNED" or entry.get("shiur_id"):
+            continue
+        if entry.get("possible_duplicate_of"):
+            continue
+        # Deliberately rely on explicit names in titles for old unassigned leads.
+        sid = speaker_match(entry.get("title", ""), "")
+        if sid == "UNASSIGNED":
+            continue
+        entry["speaker_id"] = sid
+        entry["verification_status"] = "metadata_found"
+        entry["notes"] = ((entry.get("notes") or "") +
+                          " Auto-attributed from explicit speaker name in title; provisional.").strip()
+        log.append("ATTRIBUTED [" + sid + "] " + entry.get("video_id", "") +
+                   " " + entry.get("title", ""))
 
 
 def relevant(title, description):
@@ -139,7 +182,7 @@ def discover(catalog, log):
             if not re.fullmatch(r"[A-Za-z0-9_-]{11}", vid) or vid in known:
                 continue
             info = video.get("snippet", {})
-            title = info.get("title", "").replace("&amp;", "&")
+            title = unescape(info.get("title", ""))
             description = info.get("description", "")
             if not relevant(title, description):
                 continue
@@ -258,7 +301,7 @@ def summary_from_captions(entry, text):
     )
     client = OpenAI(api_key=OPENAI_KEY)
     answer = client.responses.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+        model=os.getenv("OPENAI_MODEL") or "gpt-4.1-mini",
         input=prompt, max_output_tokens=2300)
     return answer.output_text
 
@@ -390,6 +433,7 @@ def main():
     catalog = load_catalog(dbx)
     log = ["Run " + NOW.isoformat(), "Baseline entries: " + str(len(catalog))]
     discover(catalog, log)
+    reconcile_speakers(catalog, log)
     assign_ids(catalog)
     process_videos(dbx, catalog, log)
     build_indexes(dbx, catalog)
